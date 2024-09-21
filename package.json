@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "amocrm-js": "^3.6.0",
+    "axios": "^1.7.7",
+    "cors-anywhere": "^0.4.4",
+    "http-proxy": "^1.18.1"
+  }
+}

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>amoCRM Leads</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+      .card {
+        border: 1px solid #ddd;
+        padding: 16px;
+        margin: 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        position: relative;
+        display: inline-block;
+        width: 200px;
+        vertical-align: top;
+      }
+      .card .loading {
+        display: inline-block;
+        border: 3px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 3px solid #3498db;
+        width: 24px;
+        height: 24px;
+        animation: spin 1s linear infinite;
+        position: absolute;
+        top: 16px;
+        right: 16px;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .card-details {
+        display: none; /* Скрываем детали по умолчанию */
+        margin-top: 10px;
+      }
+      .status-indicator {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+      }
+      .status-red {
+        background-color: red;
+      }
+      .status-yellow {
+        background-color: yellow;
+      }
+      .status-green {
+        background-color: green;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>amoCRM Leads</h1>
+    <div id="loading" class="loading" style="display: none"></div>
+    <div class="container" id="dealsContainer"></div>
+
+    <script>
+      const proxyUrl = "http://localhost:8080/";
+      const targetUrl = "https://tankarma.amocrm.ru/api/v4/leads";
+      const accessToken = "ваш_долгосрочный_токен";
+
+      let currentLeads = [];
+      let loadingDetailId = null;
+
+      async function fetchDeals() {
+        document.getElementById("loading").style.display = "inline-block";
+
+        try {
+          const response = await fetch(proxyUrl + targetUrl, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+          });
+          if (!response.ok) {
+            throw new Error("Network response was not ok");
+          }
+          const data = await response.json();
+          currentLeads = data._embedded ? data._embedded.leads : [];
+          processLeads();
+        } catch (error) {
+          console.error("Возникла проблема при выполнении операции fetch:", error);
+        } finally {
+          document.getElementById("loading").style.display = "none";
+        }
+      }
+
+      function processLeads() {
+        const container = document.getElementById("dealsContainer");
+        let index = 0;
+
+        function loadNextBatch() {
+          const batch = currentLeads.slice(index, index + 3);
+          index += 3;
+
+          if (batch.length > 0) {
+            batch.forEach((deal) => {
+              const card = document.createElement("div");
+              card.className = "card";
+              card.dataset.id = deal.id;
+
+              card.innerHTML = `
+                <div class="loading" style="display: none;"></div>
+                <div>
+                  <strong>${deal.name || "—"}</strong>
+                  <p>Бюджет: ${deal.price || "—"}</p>
+                  <p>ID: ${deal.id || "—"}</p>
+                </div>
+              `;
+
+              card.addEventListener("click", () => handleCardClick(deal.id, card));
+              container.appendChild(card);
+            });
+
+            setTimeout(loadNextBatch, 1000);
+          }
+        }
+
+        loadNextBatch();
+      }
+
+      async function handleCardClick(id, card) {
+        if (loadingDetailId === id) {
+          const cardDetails = card.querySelector(".card-details");
+          if (cardDetails) {
+            cardDetails.style.display = "none";
+          }
+          loadingDetailId = null;
+          return;
+        }
+
+        document.querySelectorAll(".card").forEach((otherCard) => {
+          if (otherCard !== card) {
+            const otherCardDetails = otherCard.querySelector(".card-details");
+            if (otherCardDetails) {
+              otherCardDetails.style.display = "none";
+            }
+          }
+        });
+
+        const loadingSpinner = card.querySelector(".loading");
+        loadingSpinner.style.display = "inline-block";
+        loadingDetailId = id;
+
+        try {
+          const response = await fetch(`${proxyUrl}${targetUrl}/${id}`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+          });
+          if (!response.ok) {
+            throw new Error("Network response was not ok");
+          }
+          const deal = await response.json();
+
+          card.innerHTML = `
+            <div class="loading" style="display: none;"></div>
+            <div>
+              <strong>${deal.name || "—"}</strong>
+              <p>Бюджет: ${deal.price || "—"}</p>
+              <p>ID: ${deal.id || "—"}</p>
+              <div class="card-details" style="display: block;">
+                <p>Дата окончания задачи: <span class="due-date">${
+                  deal.closest_task_at
+                    ? new Date(deal.closest_task_at * 1000).toLocaleDateString("ru-RU")
+                    : "—"
+                }</span></p>
+                <p>Статус задачи: ${renderStatus(deal.closest_task_at)}</p>
+              </div>
+            </div>
+          `;
+          loadingDetailId = id;
+        } catch (error) {
+          console.error("Возникла проблема при выполнении операции fetch:", error);
+        } finally {
+          loadingSpinner.style.display = "none";
+        }
+      }
+
+      function renderStatus(closestTaskAt) {
+        if (!closestTaskAt) {
+          return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="8" fill="red"/></svg>';
+        }
+
+        const taskDate = new Date(closestTaskAt * 1000);
+        const today = new Date();
+        const diffDays = Math.ceil((taskDate - today) / (1000 * 60 * 60 * 24));
+
+        let color = "red";
+        if (diffDays === 0) {
+          color = "green";
+        } else if (diffDays === 1) {
+          color = "yellow";
+        }
+
+        return `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="8" fill="${color}"/></svg>`;
+      }
+
+      fetchDeals();
+    </script>
+  </body>
+</html>
