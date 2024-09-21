@@ -15,7 +15,7 @@
 
 1. **Клонирование репозитория:**
    ```bash
-   git clone <URL вашего репозитория>
+   git clone https://github.com/0x01f/get_leads_amocrm.git
    cd <имя директории>
    ```
 2. **Установка зависимостей:**
